@@ -1,0 +1,9 @@
+[package]
+name = "osu_replay_parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitflags = "2.6.0"
+lzma-rs = "0.3.0"
+nom = "7.1.3"
