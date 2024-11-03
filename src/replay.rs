@@ -5,17 +5,22 @@ use lzma_rs::lzma_decompress;
 
 use crate::errors::ReplayDataError;
 
+/// Game mode of the replay.
 #[derive(Debug, Default)]
 pub enum GameMode {
     #[default]
+    /// The default osu! game mode.
     Osu,
+    /// The Taiko game mode.
     Taiko,
+    /// The Catch the Beat game mode.
     CatchTheBeat,
+    /// The Mania game mode.
     Mania,
 }
 
 impl TryFrom<u8> for GameMode {
-    type Error = ReplayDataError;
+    type Error = ReplayDataError<'static>;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -29,6 +34,7 @@ impl TryFrom<u8> for GameMode {
 }
 
 bitflags! {
+    /// Flags for the mods used in the replay.
     pub struct Mods: u32 {
         const NONE = 0;
         const NO_FAIL = 1 << 0;
@@ -65,39 +71,66 @@ bitflags! {
     }
 }
 
+/// Struct representing a single action in the replay.
 #[derive(Debug, Default)]
 pub struct ReplayData {
+    /// The time the action was performed.
     pub time: i64,
+    /// The x-coordinate of the action.
     pub x: f32,
+    /// The y-coordinate of the action.
     pub y: f32,
+    /// The keys pressed during the action.
     pub keys: u32,
 }
 
+/// Struct representing a replay file.
+/// 
+/// Use [Self::parse] to parse a replay.
 #[derive(Debug, Default)]
 pub struct Replay {
+    /// The game mode of the replay.
     pub game_mode: GameMode,
+    /// The used osu! version to create the replay.
     pub version: u32,
+    /// The MD5 hash of the beatmap.
     pub beatmap_md5: String,
+    /// The name of the player.
     pub player_name: String,
+    /// The MD5 hash of the replay.
     pub replay_md5: String,
+    /// Number of 300s
     pub n300: u16,
+    /// Number of 100s in standard, 150s in Taiko, 100s in CTB, 100s in mania.
     pub n100: u16,
+    /// Number of 50s in standard, small fruit in CTB, 50s in mania.
     pub n50: u16,
+    /// Number of Gekis in standard, Max 300s in mania.
     pub n_geki: u16,
+    /// Number of Katus in standard, 200s in mania.
     pub n_katu: u16,
+    /// Number of misses.
     pub n_miss: u16,
+    /// Total score displayed on the score report.
     pub total_score: u32,
+    /// Greatest combo displayed on the score report.
     pub greatest_combo: u16,
+    /// Perfect/full combo
     pub perfect: u8,
+    /// Bitwise representation of the mods used.
     pub mods: u32,
+    /// Life bar graph
     pub life_bar: String,
+    /// Time of the replay (Windows ticks)
     pub time_stamp: i64,
+    /// Compressed replay data
     pub compressed_data: Vec<u8>,
+    /// Online score ID
     pub online_score_id: i64,
 }
 
 impl fmt::Display for Replay {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "Gamemode: {:?}", self.game_mode)?;
         writeln!(f, "Version: {}", self.version)?;
         writeln!(f, "Beatmap MD5: {}", self.beatmap_md5)?;
@@ -123,20 +156,28 @@ impl fmt::Display for Replay {
 }
 
 impl Replay {
-    fn decompress_lzma(self) -> Result<String, ReplayDataError> {
+    fn decompress_lzma(self) -> Result<String, ReplayDataError<'static>> {
         let mut decompressed_data = Vec::new();
-        lzma_decompress(&mut self.compressed_data.as_slice(), &mut decompressed_data)
-            .map_err(|_| ReplayDataError::LzmaError)?;
-
+        lzma_decompress(&mut self.compressed_data.as_slice(), &mut decompressed_data)?;
         let decompressed_data =
-            String::from_utf8(decompressed_data).map_err(|_| ReplayDataError::ParseStringError)?;
+            String::from_utf8(decompressed_data).map_err(|_| ReplayDataError::InvalidUtfError)?;
 
         Ok(decompressed_data)
     }
 
-    pub fn get_actions(self) -> Result<Vec<ReplayData>, ReplayDataError> {
+    /// Get a vector of [`ReplayData`](struct.ReplayData.html) from the compressed replay data.
+    /// # Example
+    /// ```
+    /// use osu_replay_parser::{Replay, ReplayData};
+    /// use std::fs;
+    /// 
+    /// let input = fs::read("assets/replay.osr").expect("Error reading file");
+    /// let replay = Replay::parse(&input).expect("Error parsing replay");
+    /// let actions = replay.get_actions().expect("Error getting actions");
+    /// 
+    pub fn get_actions(self) -> Result<Vec<ReplayData>, ReplayDataError<'static>> {
         let decompressed_data = self.decompress_lzma()?;
-        let replay_data: Result<Vec<ReplayData>, ReplayDataError> = decompressed_data
+        let replay_data: Result<Vec<ReplayData>, ReplayDataError<'_>> = decompressed_data
             .split_terminator(',')
             .map(|data| {
                 let mut split = data.split('|');
